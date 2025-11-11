@@ -91,10 +91,9 @@
   // Map JSON → one CSV row
   function mapCompanyRow(obj) {
     const c = obj?.contact || {};
-    const websites = joinLines([
-      ...(Array.isArray(c.profileUrls) ? c.profileUrls : []),
-      ...(Array.isArray(c.websites) ? c.websites : [])
-    ]);
+
+    // Only use contact.websites; exclude any LinkedIn URLs
+    const websites = joinLines(filterWebsites(c.websites));
 
     return {
       'profileURL': safeStr(obj?.profileURL),
@@ -121,13 +120,26 @@
   function safeStr(v) { return (v === null || v === undefined) ? '' : String(v); }
   function joinLines(arr) {
     if (!Array.isArray(arr) || !arr.length) return '';
-    return arr.map(x => safeStr(x)).filter(Boolean).join('\n');
+    return arr.map(x => safeStr(x)).filter(Boolean).join('\n'); // newline inside the cell
+  }
+  function isLinkedInUrl(u) {
+    try {
+      const url = new URL(String(u));
+      return url.hostname.toLowerCase().includes('linkedin.com');
+    } catch {
+      // If it's not a valid URL string, fallback regex check
+      return /linkedin\.com/i.test(String(u || ''));
+    }
+  }
+  function filterWebsites(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(x => !isLinkedInUrl(x));
   }
   function formatEducations(edu) {
     if (!Array.isArray(edu) || !edu.length) return '';
     return edu.map(e => {
-      return `school: ${safeStr(e.school)}\ndegree: ${safeStr(e.degree)}\ndates: ${safeStr(e.dates)}`;
-    }).join('\n\n');
+      return `school: ${safeStr(e?.school)}\ndegree: ${safeStr(e?.degree)}\ndates: ${safeStr(e?.dates)}`;
+    }).join('\n\n'); // blank line between entries
   }
 
   // CSV writer (UTF-8 BOM for Excel)
@@ -139,11 +151,11 @@
       const row = headers.map(h => escapeCell(r[h]));
       lines.push(row.join(','));
     }
-    return lines.join('\r\n');
+    return lines.join('\r\n'); // CRLF line endings
   }
 
   function triggerDownload(csvText, filename = 'profiles.csv') {
-    const bom = '\uFEFF';
+    const bom = '\uFEFF'; // ensure Excel opens as UTF-8
     const blob = new Blob([bom, csvText], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
