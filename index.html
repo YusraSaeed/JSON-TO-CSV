@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JSON → CSV (Company)</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <h1>JSON → CSV (Company)</h1>
+    <p class="sub">Drop multiple JSON files. One CSV row per JSON file.</p>
+
+    <div class="panel">
+      <label class="drop" id="drop">
+        <input id="fileInput" type="file" accept="application/json,.json" multiple />
+        <strong>Drop JSON files here</strong> or <u>click to choose</u>
+        <div class="muted">Auto-downloads <code>profiles.csv</code>.</div>
+      </label>
+
+      <div class="row" style="margin-top:12px">
+        <button id="convert" class="primary">Convert to CSV</button>
+        <button id="clear">Clear</button>
+        <span class="muted" id="count">No files selected yet.</span>
+      </div>
+
+      <div class="files" id="fileList"></div>
+      <div class="log" id="log" hidden></div>
+    </div>
+
+    <p class="muted" style="margin-top:12px">
+      CSV cells may contain line breaks (e.g., multiple websites, emails, or education entries).
+      Everything runs locally in your browser.
+    </p>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
