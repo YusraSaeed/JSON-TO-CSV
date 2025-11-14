@@ -6,9 +6,9 @@ body { margin: 0; padding: 32px; }
 .app { max-width: 900px; margin: 0 auto; }
 h1 { margin: 0 0 8px; font-size: 28px; }
 p.sub { margin: 0 0 20px; opacity: .8; }
-.panel { border: 5px solid rgba(0, 0, 0, 0.459); border-radius: 12px; padding: 16px; }
+.panel { border: 1px solid rgba(0,0,0,.12); border-radius: 12px; padding: 16px; }
 .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-.drop { border: px dashed rgba(0,0,0,.2); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: .15s ease; }
+.drop { border: 2px dashed rgba(0,0,0,.2); border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: .15s ease; }
 .drop.dragover { background: rgba(0,0,0,.05); }
 input[type="file"] { display: none; }
 .files { margin-top: 16px; font-size: 14px; }
