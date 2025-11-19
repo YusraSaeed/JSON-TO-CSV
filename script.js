@@ -1,3 +1,5 @@
+// // handles only profiles
+
 // (() => {
 //   const fileInput  = document.getElementById('fileInput');
 //   const drop       = document.getElementById('drop');
@@ -150,12 +152,41 @@
 //     }
 //   });
 
-//   // ---------- Helpers ----------
+//   // ---------- File handling & ordering ----------
 
 //   function addFiles(listLike) {
 //     for (const f of listLike) {
 //       if (f.name.toLowerCase().endsWith('.json')) files.push(f);
 //     }
+
+//     // Natural sort with special handling for "base (n).json"
+//     const collator = new Intl.Collator(undefined, {
+//       numeric: true,
+//       sensitivity: 'base'
+//     });
+
+//     const parseName = (name) => {
+//       // "profile_data (3).json" -> base="profile_data", index=3
+//       // "profile_data.json"     -> base="profile_data", index=0
+//       const m = /^(.*?)(?:\s*\((\d+)\))?(\.[^.]+)?$/.exec(name);
+//       return {
+//         base: m ? m[1] : name,
+//         index: m && m[2] ? parseInt(m[2], 10) : 0
+//       };
+//     };
+
+//     files.sort((a, b) => {
+//       const pa = parseName(a.name);
+//       const pb = parseName(b.name);
+
+//       const baseCmp = collator.compare(pa.base, pb.base);
+//       if (baseCmp !== 0) return baseCmp;
+
+//       if (pa.index !== pb.index) return pa.index - pb.index;
+
+//       return collator.compare(a.name, b.name);
+//     });
+
 //     updateUI();
 //   }
 
@@ -172,6 +203,8 @@
 //     logEl.hidden = false;
 //     logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
 //   }
+
+//   // ---------- File reading ----------
 
 //   function readJsonFile(file) {
 //     return new Promise((resolve, reject) => {
@@ -191,6 +224,7 @@
 //   }
 
 //   // ---------- Mapping JSON → fixed row ----------
+
 //   function mapJsonToFixedRow(obj) {
 //     const row = {};
 //     const contact = obj && obj.contact ? obj.contact : {};
@@ -199,11 +233,26 @@
 //       let value = "";
 
 //       if (h.startsWith("contact.")) {
-//         // contact.something → get property from contact object
+//         // contact.something → property inside contact
 //         const key = h.substring("contact.".length); // e.g. "website1"
 //         value = contact[key];
+//       } else if (h === "mutualConnectionsCount") {
+//         value = extractMutualCount(obj?.mutualConnections);
+//       } else if (h === "city" || h === "country") {
+//         // Use explicit fields if present; otherwise derive from location string
+//         if (obj.city || obj.country) {
+//           value = h === "city" ? obj.city : obj.country;
+//         } else {
+//           const location = obj?.location || "";
+//           const parts = location.split(',').map(p => p.trim()).filter(Boolean);
+//           if (h === "city") {
+//             value = parts[0] || "";
+//           } else {
+//             value = parts.length ? parts[parts.length - 1] : "";
+//           }
+//         }
 //       } else {
-//         // all other headers are top-level keys
+//         // top-level key (experience 1 organization, school 1, etc.)
 //         value = obj[h];
 //       }
 
@@ -216,10 +265,17 @@
 //   function toCell(v) {
 //     if (v === null || v === undefined) return "";
 //     if (Array.isArray(v)) {
-//       // for completeness: join arrays with newline if they ever appear
-//       return v.map(x => x == null ? "" : String(x)).filter(x => x !== "").join("\n");
+//       return v
+//         .map(x => (x == null ? "" : String(x)))
+//         .filter(x => x !== "")
+//         .join("\n");
 //     }
 //     return String(v);
+//   }
+
+//   function extractMutualCount(text) {
+//     const m = /\b(\d{1,5})\b(?=\s+other\s+mutual\s+connections)/i.exec(text || "");
+//     return m ? m[1] : "";
 //   }
 
 //   // ---------- CSV + download helpers ----------
@@ -276,6 +332,14 @@
 
 
 
+
+
+
+
+
+
+
+
 (() => {
   const fileInput  = document.getElementById('fileInput');
   const drop       = document.getElementById('drop');
@@ -287,8 +351,14 @@
 
   let files = [];
 
-  // ---------- FIXED HEADERS ----------
-  const HEADERS = [
+  // global collator for base-name comparison
+  const collator = new Intl.Collator(undefined, {
+    numeric: false,
+    sensitivity: 'base'
+  });
+
+  // ---------- FIXED HEADERS FOR PROFILE FILES ----------
+  const PROFILE_HEADERS = [
     "profileURL",
     "fullName",
     "firstName",
@@ -374,6 +444,24 @@
     "degree 2 end date"
   ];
 
+  // ---------- FIXED HEADERS FOR COMPANY FILES ----------
+  const COMPANY_HEADERS = [
+    "companyURL",
+    "name",
+    "category",
+    "city",
+    "country",
+    "followersCount",
+    "employeesCount",
+    "mutualConnections",
+    "mutualConnectionsCount",
+    "overview",
+    "websiteUrl",
+    "verifiedPage",
+    "associatedMembersCount",
+    "specialties"
+  ];
+
   // ---------- UI wiring ----------
   drop.addEventListener('click', () => fileInput.click());
 
@@ -413,57 +501,78 @@
     logMsg('Reading and converting…');
 
     try {
-      const rows = [];
+      const profileRows = [];
+      const companyRows = [];
+
       for (const f of files) {
         const obj = await readJsonFile(f);
-        rows.push(mapJsonToFixedRow(obj));
+
+        if (isCompanyJson(obj, f.name)) {
+          companyRows.push(mapCompanyRow(obj));
+        } else {
+          profileRows.push(mapProfileRow(obj));
+        }
       }
 
-      const csv = rowsToCsv(rows, HEADERS);
-      triggerDownload(csv, 'profiles.csv');
-      logMsg(`Done. ${rows.length} row(s), ${HEADERS.length} column(s).`);
+      if (profileRows.length) {
+        const csvProfiles = rowsToCsv(profileRows, PROFILE_HEADERS);
+        triggerDownload(csvProfiles, 'profiles.csv');
+      }
+
+      if (companyRows.length) {
+        const csvCompanies = rowsToCsv(companyRows, COMPANY_HEADERS);
+        triggerDownload(csvCompanies, 'companies.csv');
+      }
+
+      logMsg(
+        `Done. ${profileRows.length} profile row(s), ${companyRows.length} company row(s).`
+      );
     } catch (err) {
       console.error(err);
       logMsg('Error: ' + (err && err.message ? err.message : String(err)));
     }
   });
 
-  // ---------- File handling & ordering ----------
+  // ---------- Helpers: file adding & sorting ----------
 
   function addFiles(listLike) {
     for (const f of listLike) {
       if (f.name.toLowerCase().endsWith('.json')) files.push(f);
     }
 
-    // Natural sort with special handling for "base (n).json"
-    const collator = new Intl.Collator(undefined, {
-      numeric: true,
-      sensitivity: 'base'
-    });
-
-    const parseName = (name) => {
-      // "profile_data (3).json" -> base="profile_data", index=3
-      // "profile_data.json"     -> base="profile_data", index=0
-      const m = /^(.*?)(?:\s*\((\d+)\))?(\.[^.]+)?$/.exec(name);
-      return {
-        base: m ? m[1] : name,
-        index: m && m[2] ? parseInt(m[2], 10) : 0
-      };
-    };
-
-    files.sort((a, b) => {
-      const pa = parseName(a.name);
-      const pb = parseName(b.name);
-
-      const baseCmp = collator.compare(pa.base, pb.base);
-      if (baseCmp !== 0) return baseCmp;
-
-      if (pa.index !== pb.index) return pa.index - pb.index;
-
-      return collator.compare(a.name, b.name);
-    });
+    // Sort so base file comes first, then numbered variants:
+    // example: company_data.json, company_data (1).json, company_data (2).json ...
+    files.sort((a, b) => compareFileNames(a.name, b.name));
 
     updateUI();
+  }
+
+  function compareFileNames(aName, bName) {
+    const pa = parseName(aName);
+    const pb = parseName(bName);
+
+    const baseCmp = collator.compare(pa.base, pb.base);
+    if (baseCmp !== 0) return baseCmp;
+
+    // same base name → compare numeric suffix (0 for no suffix)
+    if (pa.num !== pb.num) return pa.num - pb.num;
+
+    // fallback to full name compare (stable)
+    return collator.compare(aName, bName);
+  }
+
+  function parseName(name) {
+    // e.g. "company_data (3).json" → base="company_data", num=3
+    //      "company_data.json"     → base="company_data", num=0
+    const m = name.match(/^(.*?)(?:\s*\((\d+)\))?(?:\.[^.]+)?$/);
+    let base = name.toLowerCase();
+    let num = 0;
+
+    if (m) {
+      base = m[1].trim().toLowerCase();
+      if (m[2]) num = parseInt(m[2], 10) || 0;
+    }
+    return { base, num };
   }
 
   function updateUI() {
@@ -479,8 +588,6 @@
     logEl.hidden = false;
     logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
   }
-
-  // ---------- File reading ----------
 
   function readJsonFile(file) {
     return new Promise((resolve, reject) => {
@@ -499,23 +606,35 @@
     });
   }
 
-  // ---------- Mapping JSON → fixed row ----------
+  // ---------- Type detection: profile vs company ----------
 
-  function mapJsonToFixedRow(obj) {
+  function isCompanyJson(obj, filename) {
+    const name = (filename || '').toLowerCase();
+    if (name.includes('company_data') || name.includes('company')) return true;
+
+    if (obj && typeof obj === 'object') {
+      if ('companyURL' in obj) return true;
+      if ('websiteUrl' in obj && !('profileURL' in obj)) return true;
+    }
+
+    return false;
+  }
+
+  // ---------- Mapping: PROFILE JSON → fixed row ----------
+
+  function mapProfileRow(obj) {
     const row = {};
     const contact = obj && obj.contact ? obj.contact : {};
 
-    for (const h of HEADERS) {
+    for (const h of PROFILE_HEADERS) {
       let value = "";
 
       if (h.startsWith("contact.")) {
-        // contact.something → property inside contact
         const key = h.substring("contact.".length); // e.g. "website1"
         value = contact[key];
       } else if (h === "mutualConnectionsCount") {
         value = extractMutualCount(obj?.mutualConnections);
       } else if (h === "city" || h === "country") {
-        // Use explicit fields if present; otherwise derive from location string
         if (obj.city || obj.country) {
           value = h === "city" ? obj.city : obj.country;
         } else {
@@ -528,7 +647,6 @@
           }
         }
       } else {
-        // top-level key (experience 1 organization, school 1, etc.)
         value = obj[h];
       }
 
@@ -537,6 +655,18 @@
 
     return row;
   }
+
+  // ---------- Mapping: COMPANY JSON → fixed row ----------
+
+  function mapCompanyRow(obj) {
+    const row = {};
+    for (const h of COMPANY_HEADERS) {
+      row[h] = toCell(obj && obj[h]);
+    }
+    return row;
+  }
+
+  // ---------- Small utilities ----------
 
   function toCell(v) {
     if (v === null || v === undefined) return "";
@@ -554,8 +684,6 @@
     return m ? m[1] : "";
   }
 
-  // ---------- CSV + download helpers ----------
-
   function rowsToCsv(rows, headers) {
     const quote = (val) => {
       const str = val === null || val === undefined ? "" : String(val);
@@ -567,12 +695,11 @@
     for (const r of rows) {
       lines.push(headers.map(h => quote(r[h])).join(','));
     }
-    // CRLF for Excel
-    return lines.join('\r\n');
+    return lines.join('\r\n'); // CRLF for Excel
   }
 
   function triggerDownload(csvText, filename) {
-    const bom  = '\uFEFF'; // UTF-8 BOM so Excel sees UTF-8 and keeps newlines
+    const bom  = '\uFEFF';
     const blob = new Blob([bom, csvText], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
 
@@ -588,8 +715,6 @@
       URL.revokeObjectURL(url);
     }, 0);
   }
-
-  // ---------- Misc UI helpers ----------
 
   function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
