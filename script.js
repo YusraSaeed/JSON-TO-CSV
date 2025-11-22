@@ -450,6 +450,7 @@
     "name",
     "category",
     "city",
+    "stateOrProvince",
     "country",
     "followersCount",
     "employeesCount",
