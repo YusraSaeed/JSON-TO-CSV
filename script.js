@@ -458,7 +458,9 @@
     "mutualConnectionsCount",
     "overview",
     "websiteUrl",
+    "phone",
     "verifiedPage",
+    "founded",
     "associatedMembersCount",
     "specialties"
   ];
